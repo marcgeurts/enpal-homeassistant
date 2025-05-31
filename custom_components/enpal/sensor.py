@@ -63,70 +63,108 @@ async def async_setup_entry(
     for table in tables:
         field = table.records[0].values['_field']
         measurement = table.records[0].values['_measurement']
+        unit = table.records[0].values['unit']
+        sensortype = ""
+        
+        if unit == "W":
+            sensortype = "power"
+        elif unit == "kWh":
+            sensortype = "energy"
+        elif unit == "Wh":
+            sensortype = "energy"
+        elif unit == "A":
+            sensortype = "current"
+        elif unit == "V":
+            sensortype = "voltage"
+        elif unit == "Percent":
+            sensortype = "battery"
+            unit = "%"
+        elif unit == "Celcius":
+            sensortype = "temperature"
+            unit = "°C"
+        elif unit == "Hz":
+            sensortype = "freqency"
+        else:
+            sensortype = "none"
+            unit = ""
 
         if measurement == "inverter":
-            if field == "Power.DC.Total":
-                addSensor('mdi:solar-power', 'Enpal Solar Production Power', 'power', 'W')
-            elif field == "Power.House.Total":
-                addSensor('mdi:home-lightning-bolt', 'Enpal Power House Total', 'power', 'W')
-            elif field == "Voltage.Phase.A":
-                addSensor('mdi:lightning-bolt', 'Enpal Voltage Phase A', 'voltage', 'V')
-            elif field == "Current.Phase.A":
-                addSensor('mdi:lightning-bolt', 'Enpal Ampere Phase A', 'current', 'A') # missing
-            elif field == "Power.AC.Phase.A":
-                addSensor('mdi:lightning-bolt', 'Enpal Power Phase A', 'power', 'W')
-            elif field == "Voltage.Phase.B":
-                addSensor('mdi:lightning-bolt', 'Enpal Voltage Phase B', 'voltage', 'V')
-            elif field == "Current.Phase.B":
-                addSensor('mdi:lightning-bolt', 'Enpal Ampere Phase B', 'current', 'A') # missing
-            elif field == "Power.AC.Phase.B":
-                addSensor('mdi:lightning-bolt', 'Enpal Power Phase B', 'power', 'W')
-            elif field == "Voltage.Phase.C":
-                addSensor('mdi:lightning-bolt', 'Enpal Voltage Phase C', 'voltage', 'V')
-            elif field == "Current.Phase.C":
-                addSensor('mdi:lightning-bolt', 'Enpal Ampere Phase C', 'current', 'A') # missing
-            elif field == "Power.AC.Phase.C":
-                addSensor('mdi:lightning-bolt', 'Enpal Power Phase C', 'power', 'W')
-
-            #Battery
-            elif field == "Power.Battery.Charge.Discharge":
-                addSensor('mdi:battery-charging', 'Enpal Battery Power', 'power', 'W')
-            elif field == "Energy.Battery.Charge.Level":
-                addSensor('mdi:battery', 'Enpal Battery Percent', 'battery', '%')
-            elif field == "Energy.Battery.Charge.Day":
-                addSensor('mdi:battery-arrow-up', 'Enpal Battery Charge Day', 'energy', 'kWh')
-            elif field == "Energy.Battery.Discharge.Day":
-                addSensor('mdi:battery-arrow-down', 'Enpal Battery Discharge Day', 'energy', 'kWh')
-            elif field == "Energy.Battery.Charge.Total.Unit.1":
-                addSensor('mdi:battery-arrow-up', 'Enpal Battery Charge Total', 'energy', 'kWh') # Missing
-            elif field == "Energy.Battery.Discharge.Total.Unit.1":
-                addSensor('mdi:battery-arrow-down', 'Enpal Battery Discharge Total', 'energy', 'kWh') # Missing
+            if field == "Power.DC.Total": # use this one for "Energy PV Production but it needs to ...
+                addSensor('mdi:solar-power', 'Enpal Solar Production Power', sensortype, unit) # ... be mathematically integrated using the "integral sensor" helper integration
+            elif field == "Power.House.Total": # nice to have, not needed for the energy dashboard
+                addSensor('mdi:home-lightning-bolt', 'Enpal Power House Total', sensortype, unit) # needs to be mathematically integrated using the "integral sensor" helper integration
+            elif field == "Energy.Production.Total.Day": # how much energy was produced in a day. could be usefull if the timezones wouldn't be screwed. So use Power.DC.Total as explained above
+                addSensor('mdi:solar-power-variant', 'Enpal Production Day', sensortype, unit)
             else:
-                _LOGGER.debug(f"Not adding measurement: {measurement} field: {field}")
+                addSensor('mdi:solar-power', 'Enpal Solar ' + field, sensortype, unit) # add all other sensors generically
 
+        elif measurement == "battery":
+            if field == "Power.Battery.Charge.Discharge": # I use this value for the "Energy Storage" values as it is the most accurate one, but it requires some extra work as it is the wrong kind of value (W)
+                #                                           and it needs to be split in two seperate values as well:
+                #                                           1) create two helpers of type "filter" to cut this value into two values: one for more then 0 and one with less then 0
+                #                                              currently there is not much sunshine so I only get the daily battery charged of grid date but no discharge data
+                #                                              so I don't know if the discharge data needs to be inverted or not before the next step
+                #                                           2) now create another two helpers, this time of type "integral sensor" to get the correct kind of value (kWh) from the former filtered valus
+                #                                           3) add the new values of the former step and add them to your energy dashboard
+                addSensor('mdi:battery-charging', 'Enpal Battery Power', sensortype, unit)
+            elif field == "Energy.Battery.Charge.Level": # no usage so far, could be used in a custom dashboard to display how much of the batteries capacity is currently charged
+                addSensor('mdi:battery', 'Enpal Battery Percent', sensortype, unit)
+            elif field == "Energy.Battery.Charge.Day": # don't use this for "Energy Storage" in the energy dashboard, it is VERY inaccurate
+                addSensor('mdi:battery-arrow-up', 'Enpal Battery Charge Day', sensortype, unit)
+            elif field == "Energy.Battery.Discharge.Day": # don't use this for "Energy Storage" in the energy dashboard, it is VERY inaccurate
+                addSensor('mdi:battery-arrow-down', 'Enpal Battery Discharge Day', sensortype, unit)
+            else:
+                addSensor('mdi:battery', 'Enpal Battery ' + field, sensortype, unit) # add all other sensors generically
+
+        elif measurement == "powerSensor":
+            if field == "Current.Phase.A": # no usage so far
+                addSensor('mdi:lightning-bolt', 'Enpal Ampere Phase A', sensortype, unit)
+            elif field == "Current.Phase.B": # no usage so far
+                addSensor('mdi:lightning-bolt', 'Enpal Ampere Phase B', sensortype, unit)
+            elif field == "Current.Phase.C": # no usage so far
+                addSensor('mdi:lightning-bolt', 'Enpal Ampere Phase C', sensortype, unit)
+            elif field == "Power.AC.Phase.A": # no usage so far
+                addSensor('mdi:lightning-bolt', 'Enpal Power Phase A', sensortype, unit)
+            elif field == "Power.AC.Phase.B": # no usage so far
+                addSensor('mdi:lightning-bolt', 'Enpal Power Phase B', sensortype, unit)
+            elif field == "Power.AC.Phase.C": # no usage so far
+                addSensor('mdi:lightning-bolt', 'Enpal Power Phase C', sensortype, unit)
+            elif field == "Voltage.Phase.A": # no usage so far
+                addSensor('mdi:lightning-bolt', 'Enpal Voltage Phase A', sensortype, unit)
+            elif field == "Voltage.Phase.B": # no usage so far
+                addSensor('mdi:lightning-bolt', 'Enpal Voltage Phase B', sensortype, unit)
+            elif field == "Voltage.Phase.C": # no usage so far
+                addSensor('mdi:lightning-bolt', 'Enpal Voltage Phase C', sensortype, unit)
+            else:
+                addSensor('mdi:lightning-bolt', 'Enpal Power Grid ' + field, sensortype, unit) # add all other sensors generically
+            
         elif measurement == "system":
-            if field == "Power.External.Total":
-                addSensor('mdi:home-lightning-bolt', 'Enpal Power External Total', 'power', 'W')
-            elif field == "Energy.Consumption.Total.Day":
-                addSensor('mdi:home-lightning-bolt', 'Enpal Energy Consumption', 'energy', 'kWh')
-            elif field == "Energy.External.Total.Out.Day":
-                addSensor('mdi:transmission-tower-export', 'Enpal Energy External Out Day', 'energy', 'kWh')
-            elif field == "Energy.External.Total.In.Day":
-                addSensor('mdi:transmission-tower-import', 'Enpal Energy External In Day', 'energy', 'kWh')
-            elif field == "Energy.Production.Total.Day":
-                addSensor('mdi:solar-power-variant', 'Enpal Production Day', 'energy', 'kWh')
+            if field == "Power.External.Total": # no usage so far
+                addSensor('mdi:home-lightning-bolt', 'Enpal Power External Total', sensortype, unit)
+            elif field == "Energy.Consumption.Total.Day": # no usage so far
+                addSensor('mdi:home-lightning-bolt', 'Enpal Energy Consumption', sensortype, unit)
+            elif field == "Energy.External.Total.Out.Day": # can be used for "power grid" unless you have a better source
+                addSensor('mdi:transmission-tower-export', 'Enpal Energy External Out Day', sensortype, unit)
+            elif field == "Energy.External.Total.In.Day":  # can be used for "power grid" unless you have a better source
+                addSensor('mdi:transmission-tower-import', 'Enpal Energy External In Day', sensortype, unit)
+            elif field == "Energy.Storage.Total.Out.Day": # duplicates Energy.Battery.Charge.Day
+                addSensor('mdi:battery-arrow-down', 'Enpal Battery Discharge Day duplicate', sensortype, unit)
+            elif field == "Energy.Storage.Total.In.Day": # duplicates Energy.Battery.Discharge.Day
+                addSensor('mdi:battery-arrow-up', 'Enpal Battery Charge Day duplicate', sensortype, unit)
+            elif field == "measureId": # ignore this
+                unit = ""
             else:
-                _LOGGER.debug(f"Not adding measurement: {measurement} field: {field}")
+                addSensor('mdi:battery', 'Enpal System ' + field, sensortype, unit) # add all other sensors generically
 
         elif measurement == "wallbox":
-            if field == "State.Wallbox.Connector.1.Charge":
-                addSensor('mdi:ev-station', 'Wallbox Charge Percent', 'battery', '%')
-            elif field == "Power.Wallbox.Connector.1.Charging":
-                addSensor('mdi:ev-station', 'Wallbox Charging Power', 'power', 'W')
-            elif field == "Energy.Wallbox.Connector.1.Charged.Total":
-                addSensor('mdi:ev-station', 'Wallbox Charging Total', 'energy', 'Wh')
+            if field == "State.Wallbox.Connector.1.Charge": # could be used for a "Wallbox" dashboard
+                addSensor('mdi:ev-station', 'Wallbox Charge Percent', sensortype, unit)
+            elif field == "Power.Wallbox.Connector.1.Charging": # how fast the car is charged
+                addSensor('mdi:ev-station', 'Wallbox Charging Power', sensortype, unit)
+            elif field == "Energy.Wallbox.Connector.1.Charged.Total": # use this for "individual device energy usage" in the Energy dashboard
+                addSensor('mdi:ev-station', 'Wallbox Charging Total', sensortype, unit)
             else:
-                _LOGGER.debug(f"Not adding measurement: {measurement} field: {field}")
+                addSensor('mdi:ev-station', 'Wallbox ' + field, sensortype, unit) # add all other sensors generically
 
         else:
             _LOGGER.debug(f"Measurement type not recognized: {measurement}")
@@ -178,7 +216,7 @@ class EnpalSensor(SensorEntity):
 
             self._attr_native_value = round(float(value), 2)
             self._attr_device_class = self.enpal_device_class
-            self._attr_native_unit_of_measurement	= self.unit
+            self._attr_native_unit_of_measurement   = self.unit
             self._attr_state_class = 'measurement'
             self._attr_extra_state_attributes['last_check'] = datetime.now()
             self._attr_extra_state_attributes['field'] = self.field
